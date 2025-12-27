@@ -1,15 +1,18 @@
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-
-import authRoutes from './modules/auth/auth.routes.js';
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
 
 const app = express();
 
-app.use(helmet());
+// Middlewares globaux
 app.use(cors());
+app.use(helmet());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-app.use('/api/auth', authRoutes);
+// Route de test
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
 
 export default app;
