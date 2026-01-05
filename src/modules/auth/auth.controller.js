@@ -1,11 +1,16 @@
-export const register = async (req, res) => {
-  res.json({ message: 'register ok' });
-};
+import { registerService } from "./auth.service.js";
+import { registerSchema } from "./auth.schema.js";
 
-export const login = async (req, res) => {
-  res.json({ message: 'login ok' });
-};
+export const register = async (req, res, next) => {
+  try {
+    const data = registerSchema.parse(req.body);
+    const user = await registerService(data);
 
-export const logout = async (req, res) => {
-  res.json({ message: 'logout ok' });
+    res.status(201).json({
+      message: "Utilisateur créé",
+      user,
+    });
+  } catch (err) {
+    next(err);
+  }
 };
