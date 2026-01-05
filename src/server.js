@@ -22,8 +22,20 @@ app.get("/test", async (req, res) => {
 
 app.use("/api/auth", authRoutes);
 
+
+
+
 // Démarrer
 const PORT = 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Server on http://localhost:${PORT}`);
+});
+
+app.use((err, req, res, next) => {
+  console.error("❌ ERROR:", err.message);
+
+  res.status(400).json({
+    success: false,
+    message: err.message || "Erreur serveur",
+  });
 });
