@@ -1,5 +1,7 @@
 import bcrypt from "bcrypt";
 import prisma from "../../config/database.config.js";
+import { generateToken } from "../../utils/jwt.js";
+
 
 export const registerService = async ({ email, password, firstName, lastName }) => {
   const exists = await prisma.user.findUnique({
@@ -30,7 +32,6 @@ export const registerService = async ({ email, password, firstName, lastName }) 
 
   return user;
 };
-
 export const loginService = async ({ email, password }, meta = {}) => {
   const user = await prisma.user.findUnique({
     where: { email },
@@ -81,11 +82,19 @@ export const loginService = async ({ email, password }, meta = {}) => {
     },
   });
 
-  return {
-    id: user.id,
+  // 🔐 Génération du JWT
+  const accessToken = generateToken({
+    userId: user.id,
     email: user.email,
-    firstName: user.firstName,
-    lastName: user.lastName,
+  });
+
+  return {
+    accessToken,
+    user: {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    },
   };
 };
-
