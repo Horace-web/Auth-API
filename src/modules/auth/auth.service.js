@@ -131,3 +131,14 @@ export const refreshTokenService = async (token) => {
 
   return { accessToken, refreshToken: newRefreshToken };
 };
+
+// -------------------- LOGOUT --------------------
+export const logoutService = async (refreshToken) => {
+  const token = await prisma.refreshToken.findUnique({ where: { token: refreshToken } });
+  if (!token) throw new Error("Refresh token invalide");
+
+  // Supprimer le refresh token
+  await prisma.refreshToken.delete({ where: { token: refreshToken } });
+
+  return { message: "Déconnexion réussie" };
+};

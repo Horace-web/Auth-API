@@ -1,4 +1,4 @@
-import { registerService, loginService , refreshTokenService } from "./auth.service.js";
+import { registerService, loginService , refreshTokenService ,logoutService  } from "./auth.service.js";
 import { registerSchema, loginSchema } from "./auth.schema.js";
 
 export const register = async (req, res, next) => {
@@ -50,6 +50,20 @@ export const refreshToken = async (req, res, next) => {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/* -------------------- LOGOUT -------------------- */
+export const logout = async (req, res, next) => {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken) return res.status(400).json({ message: "Refresh token manquant" });
+
+    const result = await logoutService(refreshToken);
+
+    res.status(200).json(result);
   } catch (err) {
     next(err);
   }
