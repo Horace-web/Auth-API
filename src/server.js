@@ -28,6 +28,10 @@ app.get("/private", authMiddleware, (req, res) => {
     user: req.user, // les infos extraites du token
   });
 });
+app.get("/profile", authMiddleware, async (req, res) => {
+  // req.user contient userId + email depuis le token
+  res.json({ message: "Accès autorisé", user: req.user });
+});
 
 app.use("/api/auth", authRoutes);
 
