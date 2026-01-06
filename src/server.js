@@ -4,6 +4,9 @@ import cors from "cors";
 import helmet from "helmet";
 import authRoutes from "./modules/auth/auth.routes.js";
 import prisma from "./config/database.config.js";
+import { authMiddleware } from "./middlewares/auth.middleware.js";
+import 'dotenv/config';
+
 
 const app = express();
 
@@ -18,6 +21,12 @@ app.get("/health", (req, res) => res.json({ status: "ok" }));
 app.get("/test", async (req, res) => {
   const users = await prisma.user.findMany()
   res.json(users)
+});
+app.get("/private", authMiddleware, (req, res) => {
+  res.json({
+    message: "Accès autorisé",
+    user: req.user, // les infos extraites du token
+  });
 });
 
 app.use("/api/auth", authRoutes);
