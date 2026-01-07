@@ -1,5 +1,6 @@
-import { registerService, loginService , refreshTokenService ,logoutService  } from "./auth.service.js";
+import { registerService, loginService, refreshTokenService, logoutService } from "./auth.service.js";
 import { registerSchema, loginSchema } from "./auth.schema.js";
+import { changePasswordService } from "./auth.service.js";
 
 export const register = async (req, res, next) => {
   try {
@@ -9,7 +10,7 @@ export const register = async (req, res, next) => {
     return res.status(201).json({
       success: true,
       message: "Utilisateur créé",
-      data: user,
+      data: user, // ne jamais renvoyer le mot de passe
     });
   } catch (err) {
     next(err);
@@ -39,10 +40,10 @@ export const login = async (req, res, next) => {
 /* -------------------- REFRESH TOKEN -------------------- */
 export const refreshToken = async (req, res, next) => {
   try {
-    const { refreshToken } = req.body;
-    if (!refreshToken) return res.status(400).json({ message: "Refresh token manquant" });
+    const token = req.body.refreshToken;
+    if (!token) return res.status(400).json({ message: "Refresh token manquant" });
 
-    const tokens = await refreshTokenService(refreshToken);
+    const tokens = await refreshTokenService(token);
 
     return res.status(200).json({
       success: true,
@@ -58,12 +59,31 @@ export const refreshToken = async (req, res, next) => {
 /* -------------------- LOGOUT -------------------- */
 export const logout = async (req, res, next) => {
   try {
-    const { refreshToken } = req.body;
-    if (!refreshToken) return res.status(400).json({ message: "Refresh token manquant" });
+    const token = req.body.refreshToken;
+    if (!token) return res.status(400).json({ message: "Refresh token manquant" });
 
-    const result = await logoutService(refreshToken);
+    await logoutService(token);
 
-    res.status(200).json(result);
+    return res.status(200).json({
+      success: true,
+      message: "Déconnexion réussie",
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// -------------------- CHANGE PASSWORD --------------------
+export const changePassword = async (req, res, next) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+
+    const result = await changePasswordService(req.user.userId, oldPassword, newPassword);
+
+    return res.status(200).json({
+      success: true,
+      message: "Mot de passe changé avec succès",
+    });
   } catch (err) {
     next(err);
   }

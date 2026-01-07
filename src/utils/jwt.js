@@ -1,28 +1,46 @@
 import jwt from "jsonwebtoken";
+import fs from "fs";
+import path from "path";
 
-const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = "1h"; // ou 15m pour 15 minutes
+// ===== Chargement des clés depuis le dossier keys à la racine =====
+const keysPath = path.resolve(process.cwd(), "keys");
 
-export function generateToken(payload) {
-  return jwt.sign(payload, JWT_SECRET, {
-    expiresIn: JWT_EXPIRES_IN,
+const accessPrivateKey = fs.readFileSync(path.join(keysPath, "access_private.pem"), "utf8");
+const accessPublicKey = fs.readFileSync(path.join(keysPath, "access_public.pem"), "utf8");
+
+const refreshPrivateKey = fs.readFileSync(path.join(keysPath, "refresh_private.pem"), "utf8");
+const refreshPublicKey = fs.readFileSync(path.join(keysPath, "refresh_public.pem"), "utf8");
+
+// ===== Génération Access Token =====
+export function generateAccessToken(payload) {
+  return jwt.sign(payload, accessPrivateKey, {
+    algorithm: "RS256",
+    expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN || "15m",
   });
 }
-export function verifyToken(token) {
+
+// ===== Génération Refresh Token =====
+export function generateRefreshToken(payload) {
+  return jwt.sign(payload, refreshPrivateKey, {
+    algorithm: "RS256",
+    expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || "7d",
+  });
+}
+
+// ===== Vérification Access Token =====
+export function verifyAccessToken(token) {
   try {
-    return jwt.verify(token, JWT_SECRET);
-  } catch (error) {
-    return null;
+    return jwt.verify(token, accessPublicKey, { algorithms: ["RS256"] });
+  } catch (err) {
+    throw err; // laisser le controller gérer les erreurs
   }
 }
-export function extractTokenFromHeader(req) {
-  const authHeader = req.headers.authorization;
 
-  if (!authHeader) return null;
-
-  const [type, token] = authHeader.split(" ");
-
-  if (type !== "Bearer") return null;
-
-  return token;
+// ===== Vérification Refresh Token =====
+export function verifyRefreshToken(token) {
+  try {
+    return jwt.verify(token, refreshPublicKey, { algorithms: ["RS256"] });
+  } catch (err) {
+    throw err;
+  }
 }

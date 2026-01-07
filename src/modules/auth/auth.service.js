@@ -1,29 +1,11 @@
 import bcrypt from "bcrypt";
 import prisma from "../../config/database.config.js";
-import jwt from "jsonwebtoken";
-
-// Secrets depuis .env
-const ACCESS_TOKEN_SECRET = process.env.JWT_SECRET;
-const REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET;
-const ACCESS_TOKEN_EXPIRATION = "15m"; // 15 minutes
-const REFRESH_TOKEN_EXPIRATION = "7d"; // 7 jours
-
-// Génération des tokens
-const generateTokens = (user) => {
-  const accessToken = jwt.sign(
-    { userId: user.id, email: user.email },
-    ACCESS_TOKEN_SECRET,
-    { expiresIn: ACCESS_TOKEN_EXPIRATION }
-  );
-
-  const refreshToken = jwt.sign(
-    { userId: user.id, email: user.email },
-    REFRESH_TOKEN_SECRET,
-    { expiresIn: REFRESH_TOKEN_EXPIRATION }
-  );
-
-  return { accessToken, refreshToken };
-};
+import crypto from "crypto";
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  verifyRefreshToken,
+} from "../../utils/jwt.js";
 
 // -------------------- REGISTER --------------------
 export const registerService = async ({ email, password, firstName, lastName }) => {
@@ -67,18 +49,41 @@ export const loginService = async ({ email, password }, meta = {}) => {
   const passwordOk = await bcrypt.compare(password, user.password);
   if (!passwordOk) {
     await prisma.loginHistory.create({
-      data: { userId: user.id, email, success: false, ipAddress: meta.ip, userAgent: meta.userAgent },
+      data: {
+        userId: user.id,
+        email,
+        success: false,
+        ipAddress: meta.ip,
+        userAgent: meta.userAgent,
+      },
     });
     throw new Error("Email ou mot de passe incorrect");
   }
 
   // Historique login réussi
   await prisma.loginHistory.create({
-    data: { userId: user.id, email, success: true, ipAddress: meta.ip, userAgent: meta.userAgent },
+    data: {
+      userId: user.id,
+      email,
+      success: true,
+      ipAddress: meta.ip,
+      userAgent: meta.userAgent,
+    },
   });
 
+  // ----- Payload gonflé pour >1024 caractères -----
+  const payload = {
+    userId: user.id,
+    email: user.email,
+    roles: ["user"], // ajouter d'autres rôles si nécessaire
+    permissions: ["read", "write"],
+    sessionId: crypto.randomUUID(),
+    extra: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".repeat(10), // pour gonfler
+  };
+
   // Générer access + refresh token
-  const { accessToken, refreshToken } = generateTokens(user);
+  const accessToken = generateAccessToken(payload);
+  const refreshToken = generateRefreshToken(payload);
 
   // Stocker refresh token en DB
   await prisma.refreshToken.create({
@@ -90,7 +95,12 @@ export const loginService = async ({ email, password }, meta = {}) => {
   });
 
   return {
-    user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName },
+    user: {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    },
     accessToken,
     refreshToken,
   };
@@ -106,9 +116,10 @@ export const refreshTokenService = async (token) => {
     throw new Error("Refresh token expiré");
   }
 
+  // Vérification RSA
   let payload;
   try {
-    payload = jwt.verify(token, REFRESH_TOKEN_SECRET);
+    payload = verifyRefreshToken(token);
   } catch {
     throw new Error("Refresh token invalide");
   }
@@ -116,8 +127,19 @@ export const refreshTokenService = async (token) => {
   const user = await prisma.user.findUnique({ where: { id: payload.userId } });
   if (!user) throw new Error("Utilisateur introuvable");
 
+  // ----- Nouveau payload gonflé -----
+  const newPayload = {
+    userId: user.id,
+    email: user.email,
+    roles: ["user"],
+    permissions: ["read", "write"],
+    sessionId: crypto.randomUUID(),
+    extra: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".repeat(10),
+  };
+
   // Générer de nouveaux tokens
-  const { accessToken, refreshToken: newRefreshToken } = generateTokens(user);
+  const accessToken = generateAccessToken(newPayload);
+  const newRefreshToken = generateRefreshToken(newPayload);
 
   // Supprimer ancien refresh token et enregistrer le nouveau
   await prisma.refreshToken.delete({ where: { token } });
@@ -137,8 +159,29 @@ export const logoutService = async (refreshToken) => {
   const token = await prisma.refreshToken.findUnique({ where: { token: refreshToken } });
   if (!token) throw new Error("Refresh token invalide");
 
-  // Supprimer le refresh token
+  // Supprimer le refresh token pour invalider la session
   await prisma.refreshToken.delete({ where: { token: refreshToken } });
 
   return { message: "Déconnexion réussie" };
+};
+
+// -------------------- CHANGE PASSWORD --------------------
+export const changePasswordService = async (userId, oldPassword, newPassword) => {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new Error("Utilisateur introuvable");
+
+  // Vérification ancien mot de passe
+  const isMatch = await bcrypt.compare(oldPassword, user.password);
+  if (!isMatch) throw new Error("Ancien mot de passe incorrect");
+
+  // Hash du nouveau mot de passe
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  // Mise à jour en DB
+  await prisma.user.update({
+    where: { id: userId },
+    data: { password: hashedPassword },
+  });
+
+  return true;
 };
