@@ -6,6 +6,7 @@ import {
   generateRefreshToken,
   verifyRefreshToken,
 } from "../../utils/jwt.js";
+import { sendEmail } from "../../utils/email.js";
 
 // -------------------- REGISTER --------------------
 export const registerService = async ({ email, password, firstName, lastName }) => {
@@ -184,4 +185,54 @@ export const changePasswordService = async (userId, oldPassword, newPassword) =>
   });
 
   return true;
+};
+
+// Forgot Password et Reset Password 
+export const forgotPasswordService = async (email) => {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) throw new Error("Utilisateur non trouvé");
+
+  // Générer token aléatoire
+  const token = crypto.randomBytes(32).toString("hex");
+
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 heure
+
+  // Enregistrer en DB
+  await prisma.passwordResetToken.create({
+    data: {
+      token,
+      userId: user.id,
+      expiresAt,
+    },
+  });
+
+  // Envoyer email
+  const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+  await sendEmail({
+    to: user.email,
+    subject: "Réinitialisation de votre mot de passe",
+    html: `Cliquez sur ce lien pour réinitialiser votre mot de passe : <a href="${resetLink}">${resetLink}</a>`,
+  });
+
+  return { message: "Email de réinitialisation envoyé" };
+};
+
+// --- Étape 2 : Reset password ---
+export const resetPasswordService = async ({ token, newPassword }) => {
+  const resetToken = await prisma.passwordResetToken.findUnique({ where: { token } });
+  if (!resetToken || resetToken.expiresAt < new Date()) {
+    throw new Error("Token invalide ou expiré");
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  await prisma.user.update({
+    where: { id: resetToken.userId },
+    data: { password: hashedPassword },
+  });
+
+  // Supprimer le token pour éviter réutilisation
+  await prisma.passwordResetToken.delete({ where: { id: resetToken.id } });
+
+  return { message: "Mot de passe réinitialisé avec succès" };
 };

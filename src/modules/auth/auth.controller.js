@@ -1,6 +1,7 @@
 import { registerService, loginService, refreshTokenService, logoutService } from "./auth.service.js";
 import { registerSchema, loginSchema } from "./auth.schema.js";
 import { changePasswordService } from "./auth.service.js";
+import * as authService from "./auth.service.js";
 
 export const register = async (req, res, next) => {
   try {
@@ -86,5 +87,27 @@ export const changePassword = async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  }
+};
+
+// -------------------- FORGOT PASSWORD --------------------
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const result = await authService.forgotPasswordService(email);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+// -------------------- RESET PASSWORD --------------------
+export const resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    const result = await authService.resetPasswordService({ token, newPassword });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
   }
 };
