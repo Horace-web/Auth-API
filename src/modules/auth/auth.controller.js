@@ -2,6 +2,8 @@ import { registerService, loginService, refreshTokenService, logoutService } fro
 import { registerSchema, loginSchema } from "./auth.schema.js";
 import { changePasswordService } from "./auth.service.js";
 import * as authService from "./auth.service.js";
+import prisma from "../../config/database.config.js";
+
 
 export const register = async (req, res, next) => {
   try {

@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import fs from "fs";
 import path from "path";
+import prisma from "../config/database.config.js";
 
 // ===== Chargement des clés depuis le dossier keys à la racine =====
 const keysPath = path.resolve(process.cwd(), "keys");
@@ -44,3 +45,22 @@ export function verifyRefreshToken(token) {
     throw err;
   }
 }
+
+export const addToBlacklist = async (token, expiresAt) => {
+  await prisma.blacklistedAccessToken.create({
+    data: {
+      token,
+      expiresAt,
+    },
+  });
+};
+
+/**
+ * Vérifier si un access token est blacklisted
+ */
+export const isBlacklisted = async (token) => {
+  const entry = await prisma.blacklistedAccessToken.findUnique({
+    where: { token },
+  });
+  return !!entry;
+};

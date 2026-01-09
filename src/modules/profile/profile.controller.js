@@ -1,4 +1,5 @@
 import * as profileService from "./profile.service.js";
+import prisma from "../../config/database.config.js";
 
 /* -------------------- GET PROFILE -------------------- */
 export const getProfile = async (req, res, next) => {

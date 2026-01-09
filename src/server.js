@@ -7,7 +7,7 @@ import prisma from "./config/database.config.js";
 import { authMiddleware } from "./middlewares/auth.middleware.js";
 import 'dotenv/config';
 import profileRoutes from "./modules/profile/profile.routes.js";
-
+import sessionRoutes from "./modules/session/session.routes.js";
 
 const app = express();
 
@@ -36,6 +36,7 @@ app.get("/profile", authMiddleware, async (req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
+app.use("/api/session", sessionRoutes);
 
 
 
