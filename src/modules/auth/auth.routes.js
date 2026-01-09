@@ -1,32 +1,32 @@
 // auth.routes.js
 import { Router } from "express";
-import { register } from "./auth.controller.js";
-import { login , refreshToken ,logout } from "./auth.controller.js";
-import { authMiddleware } from "../../middlewares/auth.middleware.js";
-import { changePassword } from "./auth.controller.js";
 import * as authController from "./auth.controller.js";
+import { authMiddleware } from "../../middlewares/auth.middleware.js";
 import { loginRateLimiter } from "../../middlewares/rateLimitLogin.middleware.js";
 import { forgotPasswordRateLimiter } from "../../middlewares/rateLimitForgotPassword.middleware.js";
+import { twoFactorTempMiddleware } from "../../middlewares/twoFactorTemp.middleware.js";
+
 
 const router = Router();
 
-console.log("Route /register configurée"); // ← AJOUTE
+/* ==================== AUTH ==================== */
+router.post("/register", authController.register);
+router.post("/login", loginRateLimiter, authController.login);
+router.post("/refresh-token", authController.refreshToken);
+router.post("/logout", authController.logout);
+router.post("/change-password", authMiddleware, authController.changePassword);
 
-router.post("/register", register);
-
-router.post("/login", loginRateLimiter, login);
-
-router.post("/refresh-token", refreshToken);
-
-router.post("/logout", logout);
-
-router.post("/change-password", authMiddleware, changePassword);
-
-// -------------------- FORGOT PASSWORD --------------------
+/* ==================== PASSWORD RESET ==================== */
 router.post("/forgot-password", forgotPasswordRateLimiter, authController.forgotPassword);
-
-// -------------------- RESET PASSWORD --------------------
 router.post("/reset-password", authController.resetPassword);
+
+/* ==================== 2FA ==================== */
+router.post("/2fa/setup", authMiddleware, authController.setup2FA);
+router.post("/2fa/confirm", authMiddleware, authController.confirm2FA);
+router.post("/2fa/disable", authMiddleware, authController.disable2FA);
+router.post("/2fa/verify", twoFactorTempMiddleware, authController.verify2FA);
+router.post("/2fa/enable", authMiddleware, authController.enable2FA);
+
 
 
 export default router;

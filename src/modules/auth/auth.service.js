@@ -5,9 +5,13 @@ import {
   generateAccessToken,
   generateRefreshToken,
   verifyRefreshToken,
+  generateTemp2FAToken
 } from "../../utils/jwt.js";
 import { sendEmail } from "../../utils/email.js";
 import { addToBlacklist } from "../../utils/jwt.js";
+import { verify2FAToken } from "../../utils/twoFactor.js";
+import speakeasy from "speakeasy";
+import qrcode from "qrcode";
 
 /* ==================== REGISTER ==================== */
 export const registerService = async ({ email, password, firstName, lastName }) => {
@@ -74,6 +78,37 @@ export const loginService = async ({ email, password }, meta = {}) => {
       userAgent: meta.userAgent,
     },
   });
+
+/* ==================== 2FA FLOW ==================== */
+
+// 🔹 1. Setup 2FA (secret existe mais pas activé)
+if (user.twoFactorSecret && !user.twoFactorEnabledAt) {
+  const tempToken = generateTemp2FAToken({
+    userId: user.id,
+    type: "2fa-setup",
+  });
+
+  return {
+    twoFactorSetupRequired: true,
+    tempToken,
+  };
+}
+
+// 🔹 2. Login avec 2FA déjà activé
+if (user.twoFactorSecret && user.twoFactorEnabledAt) {
+  const tempToken = generateTemp2FAToken({
+    userId: user.id,
+    type: "2fa",
+  });
+
+  return {
+    twoFactorRequired: true,
+    tempToken,
+  };
+}
+
+
+
 
   // 1️⃣ Créer une session (refresh token DB)
   const refreshTokenRecord = await prisma.refreshToken.create({
@@ -246,4 +281,136 @@ export const resetPasswordService = async ({ token, newPassword }) => {
   });
 
   return { message: "Mot de passe réinitialisé avec succès" };
+};
+
+export const verify2FAService = async ({ userId, code }, meta = {}) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  // ❗ On vérifie SEULEMENT le secret
+  if (!user || !user.twoFactorSecret) {
+    throw new Error("2FA non configuré");
+  }
+
+  const isValid = verify2FAToken(user.twoFactorSecret, code);
+
+  if (!isValid) {
+    await prisma.loginHistory.create({
+      data: {
+        userId: user.id,
+        email: user.email,
+        success: false,
+        ipAddress: meta.ip,
+        userAgent: meta.userAgent,
+      },
+    });
+
+    throw new Error("Code 2FA invalide");
+  }
+
+  // ✅ Activer le 2FA SI ce n'est pas encore fait
+  if (!user.twoFactorEnabledAt) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        twoFactorEnabledAt: new Date(),
+      },
+    });
+  }
+
+  // 1️⃣ Créer la session (refresh token DB)
+  const refreshTokenRecord = await prisma.refreshToken.create({
+    data: {
+      token: "TEMP",
+      userId: user.id,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      ipAddress: meta.ip,
+      userAgent: meta.userAgent,
+    },
+  });
+
+  // 2️⃣ Générer les JWT
+  const payload = {
+    userId: user.id,
+    refreshTokenId: refreshTokenRecord.id,
+  };
+
+  const accessToken = generateAccessToken(payload);
+  const refreshToken = generateRefreshToken(payload);
+
+  // 3️⃣ Sauver le vrai refresh token
+  await prisma.refreshToken.update({
+    where: { id: refreshTokenRecord.id },
+    data: { token: refreshToken },
+  });
+
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    },
+    accessToken,
+    refreshToken,
+  };
+};
+
+
+/* ==================== ENABLE 2FA ==================== */
+export const enable2FAService = async (userId) => {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new Error("Utilisateur introuvable");
+
+  // Générer secret
+  const secret = speakeasy.generateSecret({
+    name: `Auth_API (${user.email})`,
+    length: 20,
+  });
+
+  // Mettre à jour user avec secret mais pas encore activé
+  await prisma.user.update({
+    where: { id: userId },
+    data: { twoFactorSecret: secret.base32 },
+  });
+
+  // Générer QR code pour Google Authenticator
+  const qrCode = await qrcode.toDataURL(secret.otpauth_url);
+
+  return { qrCode, secret: secret.base32 };
+};
+
+export const disable2FAService = async ({ userId, code }, meta = {}) => {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+
+  if (!user || !user.twoFactorSecret || !user.twoFactorEnabledAt) {
+    throw new Error("2FA non activé");
+  }
+
+  // Vérifier le code Google Authenticator
+  const isValid = verify2FAToken(user.twoFactorSecret, code);
+  if (!isValid) {
+    await prisma.loginHistory.create({
+      data: {
+        userId: user.id,
+        email: user.email,
+        success: false,
+        ipAddress: meta.ip,
+        userAgent: meta.userAgent,
+      },
+    });
+    throw new Error("Code 2FA invalide");
+  }
+
+  // Désactiver le 2FA
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      twoFactorSecret: null,
+      twoFactorEnabledAt: null,
+    },
+  });
+
+  return { message: "2FA désactivé avec succès" };
 };

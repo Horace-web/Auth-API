@@ -64,3 +64,10 @@ export const isBlacklisted = async (token) => {
   });
   return !!entry;
 };
+
+export function generateTemp2FAToken(payload) {
+  return jwt.sign(payload, accessPrivateKey, {
+    algorithm: "RS256",
+    expiresIn: "5m",
+  });
+}
