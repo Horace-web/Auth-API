@@ -1,8 +1,9 @@
-import { registerService, loginService, refreshTokenService, logoutService } from "./auth.service.js";
+import { registerService, loginService, refreshTokenService, logoutService, oauthGoogleService } from "./auth.service.js";
 import { registerSchema, loginSchema } from "./auth.schema.js";
 import { changePasswordService } from "./auth.service.js";
 import * as authService from "./auth.service.js";
 import prisma from "../../config/database.config.js";
+import passport from "../../config/oauth.config.js";
 
 
 export const register = async (req, res, next) => {
@@ -62,10 +63,13 @@ export const refreshToken = async (req, res, next) => {
 /* -------------------- LOGOUT -------------------- */
 export const logout = async (req, res, next) => {
   try {
-    const token = req.body.refreshToken;
-    if (!token) return res.status(400).json({ message: "Refresh token manquant" });
+    const refreshToken = req.body.refreshToken;
+    const accessToken = req.headers.authorization?.replace("Bearer ", "");
+    
+    if (!refreshToken) return res.status(400).json({ message: "Refresh token manquant" });
+    if (!accessToken) return res.status(400).json({ message: "Access token manquant" });
 
-    await logoutService(token);
+    await logoutService(refreshToken, accessToken);
 
     return res.status(200).json({
       success: true,
@@ -111,5 +115,40 @@ export const resetPassword = async (req, res) => {
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+// -------------------- OAUTH GOOGLE --------------------
+export const googleAuth = passport.authenticate("google", {
+  scope: ["profile", "email"],
+});
+
+export const googleCallback = async (req, res, next) => {
+  try {
+    // Vérifier si l'authentification a échoué
+    if (req.query.error) {
+      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+      return res.redirect(`${frontendUrl}/auth/callback?error=${req.query.error}`);
+    }
+
+    const profile = req.user; // Passport met le profile dans req.user après authentification
+
+    if (!profile) {
+      throw new Error("Profil Google non disponible");
+    }
+
+    const result = await oauthGoogleService(profile, {
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
+
+    // Rediriger vers le frontend avec les tokens
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const redirectUrl = `${frontendUrl}/auth/callback?accessToken=${result.accessToken}&refreshToken=${result.refreshToken}`;
+
+    return res.redirect(redirectUrl);
+  } catch (err) {
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    return res.redirect(`${frontendUrl}/auth/callback?error=${encodeURIComponent(err.message)}`);
   }
 };

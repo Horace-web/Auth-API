@@ -247,3 +247,116 @@ export const resetPasswordService = async ({ token, newPassword }) => {
 
   return { message: "Mot de passe réinitialisé avec succès" };
 };
+
+/* ==================== OAUTH GOOGLE ==================== */
+export const oauthGoogleService = async (profile, meta = {}) => {
+  const { id: providerId, emails, name } = profile;
+  const email = emails?.[0]?.value;
+
+  if (!email) {
+    throw new Error("Email non disponible depuis Google");
+  }
+
+  // Vérifier si un OAuthAccount existe déjà pour ce provider et providerId
+  const existingOAuthAccount = await prisma.oauthAccount.findUnique({
+    where: {
+      provider_providerId: {
+        provider: "google",
+        providerId: providerId,
+      },
+    },
+    include: {
+      user: true,
+    },
+  });
+
+  let user;
+
+  if (existingOAuthAccount) {
+    // Utilisateur existant avec compte OAuth Google
+    user = existingOAuthAccount.user;
+  } else {
+    // Vérifier si un utilisateur existe déjà avec cet email
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser) {
+      // Lier le compte OAuth à l'utilisateur existant
+      await prisma.oauthAccount.create({
+        data: {
+          provider: "google",
+          providerId: providerId,
+          userId: existingUser.id,
+        },
+      });
+      user = existingUser;
+    } else {
+      // Créer un nouvel utilisateur et son compte OAuth
+      user = await prisma.user.create({
+        data: {
+          email,
+          firstName: name?.givenName || null,
+          lastName: name?.familyName || null,
+          emailVerifiedAt: new Date(), // Email vérifié par Google
+          oauthAccounts: {
+            create: {
+              provider: "google",
+              providerId: providerId,
+            },
+          },
+        },
+      });
+    }
+  }
+
+  if (user.disabledAt) {
+    throw new Error("Compte désactivé");
+  }
+
+  // Enregistrer dans l'historique de connexion
+  await prisma.loginHistory.create({
+    data: {
+      userId: user.id,
+      email: user.email,
+      success: true,
+      ipAddress: meta.ip,
+      userAgent: meta.userAgent,
+    },
+  });
+
+  // Créer une session (refresh token DB)
+  const refreshTokenRecord = await prisma.refreshToken.create({
+    data: {
+      token: "TEMP",
+      userId: user.id,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  // Payload JWT (lié à la session DB)
+  const payload = {
+    userId: user.id,
+    refreshTokenId: refreshTokenRecord.id,
+  };
+
+  const accessToken = generateAccessToken(payload);
+  const refreshToken = generateRefreshToken(payload);
+
+  // Mettre à jour le token réel
+  await prisma.refreshToken.update({
+    where: { id: refreshTokenRecord.id },
+    data: { token: refreshToken },
+  });
+
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    },
+    accessToken,
+    refreshToken,
+  };
+};

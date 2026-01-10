@@ -7,6 +7,7 @@ import { changePassword } from "./auth.controller.js";
 import * as authController from "./auth.controller.js";
 import { loginRateLimiter } from "../../middlewares/rateLimitLogin.middleware.js";
 import { forgotPasswordRateLimiter } from "../../middlewares/rateLimitForgotPassword.middleware.js";
+import passport from "../../config/oauth.config.js";
 
 const router = Router();
 
@@ -28,5 +29,8 @@ router.post("/forgot-password", forgotPasswordRateLimiter, authController.forgot
 // -------------------- RESET PASSWORD --------------------
 router.post("/reset-password", authController.resetPassword);
 
+// -------------------- OAUTH GOOGLE --------------------
+router.get("/google", authController.googleAuth);
+router.get("/google/callback", passport.authenticate("google", { session: false }), authController.googleCallback);
 
 export default router;
