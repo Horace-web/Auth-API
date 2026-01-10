@@ -1,68 +1,59 @@
-🔐 Auth API – Authentication & Security Backend
+# 🔐 Auth API – Authentication & Security Backend
 
-API d’authentification sécurisée implémentant :
+API d'authentification sécurisée avec support 2FA, gestion avancée des tokens JWT et protection contre les attaques.
 
-Authentification par email / mot de passe
+## ✨ Fonctionnalités
 
-JWT (Access & Refresh Tokens)
+- ✅ Authentification par email / mot de passe
+- ✅ JWT (Access & Refresh Tokens avec RS256)
+- ✅ Rotation automatique des refresh tokens
+- ✅ Blacklist des access tokens (logout sécurisé)
+- ✅ 2FA avec Google Authenticator (TOTP)
+- ✅ Récupération de mot de passe par email
+- ✅ Historique des connexions
+- ✅ Rate limiting (protection anti brute-force)
 
-Rotation des refresh tokens
+## 🛠️ Stack technique
 
-Blacklist des access tokens (logout sécurisé)
+- **Runtime** : Node.js
+- **Framework** : Express
+- **ORM** : Prisma
+- **Base de données** : PostgreSQL / MySQL / SQLite
+- **Authentification** : JWT (RS256)
+- **2FA** : Speakeasy (TOTP)
+- **Sécurité** : bcrypt, Rate limiting middleware
+- **Validation** : Zod
+- **Email** : Nodemailer
 
-2FA (Google Authenticator – TOTP)
+## 📦 Prérequis
 
-Mot de passe oublié / réinitialisation par email
+- Node.js ≥ 18
+- npm ou yarn
+- Une base de données compatible Prisma
+- Un compte email SMTP (Gmail, Outlook, etc.)
 
-Historique des connexions
+## 📥 Installation
 
-Rate limiting (anti brute-force)
+### 1️⃣ Cloner le projet
 
-🛠️ Technologies utilisées
-
-Node.js
-
-Express
-
-Prisma ORM
-
-PostgreSQL / MySQL / SQLite
-
-JWT (RS256)
-
-Speakeasy (2FA)
-
-bcrypt
-
-Zod (validation)
-
-Nodemailer
-
-Rate limiting middleware
-
-📦 Prérequis
-
-Node.js ≥ 18
-
-npm ou yarn
-
-Une base de données compatible Prisma
-
-Un compte email SMTP (Gmail, Outlook, etc.)
-
-📥 Installation
-1️⃣ Cloner le projet
+```bash
 git clone https://github.com/ton-repo/auth-api.git
 cd auth-api
+```
 
-2️⃣ Installer les dépendances
+### 2️⃣ Installer les dépendances
+
+```bash
 npm install
+```
 
-⚙️ Configuration
-3️⃣ Variables d’environnement
+## ⚙️ Configuration
 
-Créer un fichier .env à la racine :
+### 3️⃣ Variables d'environnement
 
+Créer un fichier `.env` à la racine du projet :
+
+```env
 PORT=3000
 DATABASE_URL="file:./dev.db"
 
@@ -76,98 +67,129 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=example@gmail.com
 SMTP_PASS=app_password
+```
 
-4️⃣ Génération des clés JWT (RS256)
+### 4️⃣ Génération des clés JWT (RS256)
+
+```bash
 mkdir keys
 openssl genrsa -out keys/access_private.pem 2048
 openssl rsa -in keys/access_private.pem -pubout -out keys/access_public.pem
+```
 
-5️⃣ Initialiser la base de données
+### 5️⃣ Initialiser la base de données
+
+```bash
 npx prisma migrate dev
 npx prisma generate
+```
 
-▶️ Lancer l’application
+## ▶️ Lancer l'application
+
+```bash
 npm run dev
+```
 
+L'API sera disponible sur : **http://localhost:3000**
 
-API disponible sur :
+## 🔐 Flux d'authentification
 
-http://localhost:3000
+### 🔹 Login sans 2FA
+Retourne directement `accessToken` + `refreshToken`
 
-🔐 Flux d’authentification (résumé)
-🔹 Login sans 2FA
+### 🔹 Activation du 2FA
+1. Login normal
+2. Appel à `/2fa/enable`
+3. Scan du QR code avec Google Authenticator
+4. Validation du code via `/2fa/verify`
 
-Retourne accessToken + refreshToken
+### 🔹 Login avec 2FA activé
+1. Login → retourne `tempToken`
+2. Envoi du code Google Authenticator + `tempToken`
+3. Réception des tokens finaux (`accessToken` + `refreshToken`)
 
-🔹 Activation 2FA
+## 🧪 Tests avec Postman
 
-Login normal
+### 1️⃣ Register
 
-Appel /2fa/enable
-
-Scan QR code avec Google Authenticator
-
-Validation du code via /2fa/verify
-
-🔹 Login avec 2FA activé
-
-Login → retourne tempToken
-
-Envoi du code Google Authenticator + tempToken
-
-Réception des tokens finaux
-
-🧪 Tests avec Postman (workflow)
-1️⃣ Register
+```http
 POST /api/auth/register
+Content-Type: application/json
 
-2️⃣ Login
+{
+  "email": "user@example.com",
+  "password": "SecurePass123!"
+}
+```
+
+### 2️⃣ Login
+
+```http
 POST /api/auth/login
+Content-Type: application/json
 
+{
+  "email": "user@example.com",
+  "password": "SecurePass123!"
+}
+```
 
-Si 2FA actif → twoFactorRequired: true
+> Si 2FA actif → `twoFactorRequired: true`
 
-3️⃣ Activer le 2FA
+### 3️⃣ Activer le 2FA
+
+```http
 POST /api/auth/2fa/enable
 Authorization: Bearer ACCESS_TOKEN
+```
 
-4️⃣ Vérifier le code 2FA
+### 4️⃣ Vérifier le code 2FA
+
+```http
 POST /api/auth/2fa/verify
-Body:
+Content-Type: application/json
+
 {
-  "tempToken": "...",
+  "tempToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "code": "123456"
 }
+```
 
-5️⃣ Refresh token
+### 5️⃣ Refresh token
+
+```http
 POST /api/auth/refresh
+Content-Type: application/json
 
-6️⃣ Logout
+{
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+### 6️⃣ Logout
+
+```http
 POST /api/auth/logout
+Authorization: Bearer ACCESS_TOKEN
+```
 
-🚨 Sécurité implémentée
+## 🚨 Sécurité implémentée
 
-Hashage bcrypt
+- ✅ Hashage des mots de passe avec **bcrypt**
+- ✅ Signature JWT asymétrique (**RS256**)
+- ✅ Rotation automatique des refresh tokens
+- ✅ Blacklist des access tokens pour logout sécurisé
+- ✅ Protection contre le brute-force avec rate limiting
+- ✅ Séparation `tempToken` / `accessToken` pour le 2FA
+- ✅ Audit trail des connexions
 
-JWT RS256
+## 📌 Notes importantes
 
-Rotation des refresh tokens
+- ⚠️ Le `tempToken` n'est valable **que pour le 2FA** (durée limitée)
+- ⚠️ Aucun `accessToken` n'est délivré sans validation 2FA si activé
+- ⚠️ Le QR code 2FA n'est généré **qu'une seule fois** lors de l'activation
+- ✅ Le 2FA peut être désactivé après vérification d'identité
 
-Blacklist access tokens
+---
 
-Protection brute-force
-
-Séparation tempToken / accessToken
-
-Audit des connexions
-
-
-📌 Notes importantes
-
-Le tempToken n’est valable que pour le 2FA
-
-Aucun access token n’est délivré sans validation 2FA
-
-Le QR code n’est généré qu’une seule fois
-
-Le 2FA peut être désactivé après vérification
+⭐ Si ce projet vous a aidé, n'hésitez pas à lui donner une étoile !
