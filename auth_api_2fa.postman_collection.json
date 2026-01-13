@@ -1,0 +1,26 @@
+{
+  "info": {
+    "_postman_id": "9e300283-73dc-46e3-a1bf-ea0283dbb9c8",
+    "name": "Auth API \u2013 2FA",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "tempToken",
+      "value": ""
+    }
+  ],
+  "item": []
+}

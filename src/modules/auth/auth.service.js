@@ -12,6 +12,7 @@ import { addToBlacklist } from "../../utils/jwt.js";
 import { verify2FAToken } from "../../utils/twoFactor.js";
 import speakeasy from "speakeasy";
 import qrcode from "qrcode";
+import { verifyTemp2FAToken } from "../../utils/jwt.js";
 
 /* ==================== REGISTER ==================== */
 export const registerService = async ({ email, password, firstName, lastName }) => {
@@ -200,20 +201,25 @@ export const refreshTokenService = async (token) => {
 };
 
 /* ==================== LOGOUT ==================== */
-export const logoutService = async (refreshToken, accessToken) => {
+export const logoutService = async ({ refreshToken, accessToken, userId }) => {
   const payload = verifyRefreshToken(refreshToken);
 
-  // Mettre à jour revokedAt pour le refresh token
   await prisma.refreshToken.update({
     where: { id: payload.refreshTokenId },
     data: { revokedAt: new Date() },
   });
 
-  // Ajouter l'access token à la blacklist pour qu'il soit invalidé immédiatement
-  await addToBlacklist(accessToken, new Date(Date.now() + 15 * 60 * 1000)); // si access token expire dans 15 min
+  await prisma.blacklistedAccessToken.create({
+    data: {
+      token: accessToken,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      userId, // ← important : userId défini
+    },
+  });
 
   return { message: "Déconnexion réussie" };
 };
+
 
 /* ==================== CHANGE PASSWORD ==================== */
 export const changePasswordService = async (userId, oldPassword, newPassword) => {
@@ -283,12 +289,15 @@ export const resetPasswordService = async ({ token, newPassword }) => {
   return { message: "Mot de passe réinitialisé avec succès" };
 };
 
-export const verify2FAService = async ({ userId, code }, meta = {}) => {
+export const verify2FAService = async ({ tempToken, code }, meta = {}) => {
+  // 🔐 Vérifier le token temporaire
+  const payload = verifyTemp2FAToken(tempToken, ["2fa", "2fa-setup"]);
+  const userId = payload.userId;
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
   });
 
-  // ❗ On vérifie SEULEMENT le secret
   if (!user || !user.twoFactorSecret) {
     throw new Error("2FA non configuré");
   }
@@ -296,50 +305,34 @@ export const verify2FAService = async ({ userId, code }, meta = {}) => {
   const isValid = verify2FAToken(user.twoFactorSecret, code);
 
   if (!isValid) {
-    await prisma.loginHistory.create({
-      data: {
-        userId: user.id,
-        email: user.email,
-        success: false,
-        ipAddress: meta.ip,
-        userAgent: meta.userAgent,
-      },
-    });
-
     throw new Error("Code 2FA invalide");
   }
 
-  // ✅ Activer le 2FA SI ce n'est pas encore fait
+  // ✅ Activer le 2FA si nécessaire
   if (!user.twoFactorEnabledAt) {
     await prisma.user.update({
       where: { id: user.id },
-      data: {
-        twoFactorEnabledAt: new Date(),
-      },
+      data: { twoFactorEnabledAt: new Date() },
     });
   }
 
-  // 1️⃣ Créer la session (refresh token DB)
+  // 🔑 Créer session + tokens
   const refreshTokenRecord = await prisma.refreshToken.create({
     data: {
       token: "TEMP",
       userId: user.id,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      ipAddress: meta.ip,
-      userAgent: meta.userAgent,
     },
   });
 
-  // 2️⃣ Générer les JWT
-  const payload = {
+  const jwtPayload = {
     userId: user.id,
     refreshTokenId: refreshTokenRecord.id,
   };
 
-  const accessToken = generateAccessToken(payload);
-  const refreshToken = generateRefreshToken(payload);
+  const accessToken = generateAccessToken(jwtPayload);
+  const refreshToken = generateRefreshToken(jwtPayload);
 
-  // 3️⃣ Sauver le vrai refresh token
   await prisma.refreshToken.update({
     where: { id: refreshTokenRecord.id },
     data: { token: refreshToken },
@@ -349,8 +342,6 @@ export const verify2FAService = async ({ userId, code }, meta = {}) => {
     user: {
       id: user.id,
       email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
     },
     accessToken,
     refreshToken,

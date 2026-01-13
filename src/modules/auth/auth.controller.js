@@ -33,23 +33,33 @@ export const login = async (req, res, next) => {
       userAgent: req.headers["user-agent"],
     });
 
-    // 🔐 CAS 2FA (activation OU déjà activé)
-    if (result.twoFactorRequired) {
-      return res.status(200).json({
-        success: true,
-        twoFactorRequired: true,
-        tempToken: result.tempToken,
-      });
-    }
+    // 🔐 CAS 2FA – setup (activation)
+if (result.twoFactorSetupRequired) {
+  return res.status(200).json({
+    success: true,
+    twoFactorSetupRequired: true,
+    tempToken: result.tempToken,
+  });
+}
 
-    // ✅ CAS NORMAL
-    return res.status(200).json({
-      success: true,
-      message: "Connexion réussie",
-      user: result.user,
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-    });
+// 🔐 CAS 2FA – déjà activé
+if (result.twoFactorRequired) {
+  return res.status(200).json({
+    success: true,
+    twoFactorRequired: true,
+    tempToken: result.tempToken,
+  });
+}
+
+// ✅ CAS NORMAL
+return res.status(200).json({
+  success: true,
+  message: "Connexion réussie",
+  user: result.user,
+  accessToken: result.accessToken,
+  refreshToken: result.refreshToken,
+});
+
   } catch (err) {
     next(err);
   }
@@ -78,19 +88,27 @@ export const refreshToken = async (req, res, next) => {
 /* -------------------- LOGOUT -------------------- */
 export const logout = async (req, res, next) => {
   try {
-    const token = req.body.refreshToken;
-    if (!token) return res.status(400).json({ message: "Refresh token manquant" });
+    const { refreshToken } = req.body;
+    const accessToken = req.headers["authorization"]?.split(" ")[1];
+    const userId = req.user?.userId;
 
-    await logoutService(token);
+    if (!refreshToken || !accessToken || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "Refresh token, access token ou userId manquant",
+      });
+    }
 
-    return res.status(200).json({
-      success: true,
-      message: "Déconnexion réussie",
-    });
+    await logoutService({ refreshToken, accessToken, userId });
+
+    return res.status(200).json({ success: true, message: "Déconnexion réussie" });
   } catch (err) {
     next(err);
   }
 };
+
+
+
 
 // -------------------- CHANGE PASSWORD --------------------
 export const changePassword = async (req, res, next) => {
@@ -132,27 +150,24 @@ export const resetPassword = async (req, res) => {
 
 export const verify2FA = async (req, res, next) => {
   try {
-    const { code } = req.body;
+    const { tempToken, code } = req.body;
 
-    if (!code) {
+    if (!tempToken || !code) {
       return res.status(400).json({
         success: false,
-        message: "Code 2FA manquant",
+        message: "tempToken ou code manquant",
       });
     }
 
     const result = await verify2FAService(
-      {
-        userId: req.tempUser.userId,
-        code,
-      },
+      { tempToken, code },
       {
         ip: req.ip,
         userAgent: req.headers["user-agent"],
       }
     );
 
-    res.json({
+    return res.status(200).json({
       success: true,
       ...result,
     });
@@ -160,6 +175,7 @@ export const verify2FA = async (req, res, next) => {
     next(err);
   }
 };
+
 
 // ==================== 2FA SETUP ====================
 export const setup2FA = async (req, res, next) => {

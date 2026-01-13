@@ -13,7 +13,7 @@ const router = Router();
 router.post("/register", authController.register);
 router.post("/login", loginRateLimiter, authController.login);
 router.post("/refresh-token", authController.refreshToken);
-router.post("/logout", authController.logout);
+router.post("/logout", authMiddleware, authController.logout);
 router.post("/change-password", authMiddleware, authController.changePassword);
 
 /* ==================== PASSWORD RESET ==================== */
@@ -24,7 +24,7 @@ router.post("/reset-password", authController.resetPassword);
 router.post("/2fa/setup", authMiddleware, authController.setup2FA);
 router.post("/2fa/confirm", authMiddleware, authController.confirm2FA);
 router.post("/2fa/disable", authMiddleware, authController.disable2FA);
-router.post("/2fa/verify", twoFactorTempMiddleware, authController.verify2FA);
+router.post("/2fa/verify",  authController.verify2FA);
 router.post("/2fa/enable", authMiddleware, authController.enable2FA);
 
 

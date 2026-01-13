@@ -46,11 +46,12 @@ export function verifyRefreshToken(token) {
   }
 }
 
-export const addToBlacklist = async (token, expiresAt) => {
+export const addToBlacklist = async (token, expiresAt, userId) => {
   await prisma.blacklistedAccessToken.create({
     data: {
       token,
       expiresAt,
+      userId
     },
   });
 };
@@ -71,3 +72,18 @@ export function generateTemp2FAToken(payload) {
     expiresIn: "5m",
   });
 }
+
+const publicKey = fs.readFileSync("keys/access_public.pem");
+
+export const verifyTemp2FAToken = (token, expectedType) => {
+  const payload = jwt.verify(token, publicKey, {
+    algorithms: ["RS256"],
+  });
+
+  if (!["2fa", "2fa-setup"].includes(payload.type)) {
+  throw new Error("Type de token invalide");
+}
+
+
+  return payload;
+};
